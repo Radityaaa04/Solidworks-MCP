@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "solidworks_cad": {
+      "command": "C:\\Users\\radit\\Documents\\antigravity\\resilient-chandrasekhar\\.venv\\Scripts\\python.exe",
+      "args": [
+        "-m",
+        "sw_mcp.server"
+      ],
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
+    }
+  }
+}

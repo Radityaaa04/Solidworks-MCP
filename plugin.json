@@ -1,0 +1,11 @@
+{
+  "name": "solidworks",
+  "displayName": "SolidWorks 2026 CAD Automation",
+  "version": "1.0.0",
+  "description": "Autonomous CAD engineering, 3D parametric modeling, kinematic assembly, mass property calculation, and 2D drafting automation for SolidWorks 2026 SP4.1 via 52 dedicated MCP tools.",
+  "suggestedPrompts": [
+    "Model a 3D transmission spur gear with 18 teeth and check mass properties",
+    "Assemble a piston inside a cylinder bore with concentric and coincident mates",
+    "Generate a 2D manufacturing drawing with Section View A-A and export to PDF"
+  ]
+}
