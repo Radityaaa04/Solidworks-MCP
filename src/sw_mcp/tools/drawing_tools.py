@@ -210,3 +210,33 @@ def register_drawing_tools(mcp: FastMCP) -> None:
                 reverse_direction=reverse_direction,
             )
         )
+
+    @mcp.tool()
+    async def sw_insert_bom_table(
+        view_name: str,
+        x_mm: float = 200.0,
+        y_mm: float = 50.0,
+        bom_type: str = "top_level",
+        configuration: str = "Default",
+        table_template: str = "",
+    ) -> Dict[str, Any]:
+        """
+        Insert a manufacturing Bill of Materials (BOM) table on the active 2D drawing sheet.
+        view_name: Name of the drawing view to reference (e.g. 'Drawing View1').
+        x_mm: Horizontal anchor placement on sheet in millimeters.
+        y_mm: Vertical anchor placement on sheet in millimeters.
+        bom_type: 'top_level', 'parts_only', or 'indented'.
+        configuration: Model configuration name (default 'Default').
+        table_template: Optional path to custom .sldbomtbt template.
+        """
+        worker = get_sta_worker()
+        return await worker.run(
+            lambda: get_cad_session().drawing.insert_bom_table(
+                view_name=view_name,
+                x_mm=x_mm,
+                y_mm=y_mm,
+                bom_type=bom_type,
+                configuration=configuration,
+                table_template=table_template,
+            )
+        )

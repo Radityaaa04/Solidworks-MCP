@@ -9,6 +9,7 @@ from sw_mcp.core.units import (
     kg_to_grams,
     format_equation_string,
     convert_mass_properties,
+    select_brep_entity_by_point,
 )
 
 
@@ -48,3 +49,54 @@ def test_convert_mass_properties():
     assert result["center_of_mass_mm"]["x"] == pytest.approx(25.0)
     assert result["center_of_mass_mm"]["y"] == pytest.approx(15.0)
     assert result["center_of_mass_mm"]["z"] == pytest.approx(10.0)
+
+
+def test_select_brep_entity_by_point_occluded_edge_and_face():
+    """Verify B-Rep closest-point selection succeeds even when viewport SelectByID would fail."""
+    class DummyEntity:
+        def __init__(self, pt):
+            self._pt = pt
+            self.selected_with = None
+
+        def GetClosestPointOn(self, x, y, z):
+            return self._pt
+
+        def Select4(self, append, sel_data):
+            self.selected_with = (append, getattr(sel_data, "Mark", 0))
+            return True
+
+    occluded_edge = DummyEntity((0.0, 0.0, 0.010))
+    far_edge = DummyEntity((0.050, 0.030, 0.020))
+    planar_face = DummyEntity((0.025, 0.015, 0.020))
+
+    class DummyBody:
+        def GetEdges(self):
+            return [far_edge, occluded_edge]
+
+        def GetFaces(self):
+            return [planar_face]
+
+    class DummySelectData:
+        def __init__(self):
+            self.Mark = 0
+
+    class DummyExt:
+        def CreateSelectData(self):
+            return DummySelectData()
+
+    class DummyDoc:
+        Extension = DummyExt()
+
+        def GetBodies2(self, body_type, visible_only):
+            return [DummyBody()]
+
+    doc = DummyDoc()
+    assert select_brep_entity_by_point(doc, "EDGE", 0.0, 0.0, 0.010, append=False, mark=1) is True
+    assert occluded_edge.selected_with == (False, 1)
+    assert far_edge.selected_with is None
+
+    assert select_brep_entity_by_point(doc, "FACE", 0.025, 0.015, 0.020, append=True, mark=2) is True
+    assert planar_face.selected_with == (True, 2)
+
+    # Out-of-tolerance point should be rejected
+    assert select_brep_entity_by_point(doc, "EDGE", 0.5, 0.5, 0.5) is False

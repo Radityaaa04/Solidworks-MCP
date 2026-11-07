@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional
 
 from sw_mcp.cad.document import DocumentManager
 from sw_mcp.core.exceptions import FeatureCreationError
-from sw_mcp.core.units import deg_to_radians, mm_to_meters
+from sw_mcp.core.units import deg_to_radians, mm_to_meters, select_brep_entity_by_point
 
 logger = logging.getLogger("sw_mcp.cad.sketcher")
 
@@ -112,6 +112,8 @@ class SketchManager:
         zm = mm_to_meters(z_mm)
 
         selected = doc.SelectByID("", "FACE", xm, ym, zm)
+        if not selected:
+            selected = select_brep_entity_by_point(doc, "FACE", xm, ym, zm, append=False, mark=0)
         if not selected:
             raise FeatureCreationError(f"Could not locate or select a planar face at coordinates ({x_mm}, {y_mm}, {z_mm}) mm.")
 
@@ -340,4 +342,86 @@ class SketchManager:
             "start_mm": [x1_mm, y1_mm, z1_mm],
             "end_mm": [x2_mm, y2_mm, z2_mm],
             "length_mm": round(length_mm, 4),
+        }
+
+    def add_sketch_constraint(
+        self,
+        constraint_type: str,
+        x1_mm: Optional[float] = None,
+        y1_mm: Optional[float] = None,
+        x2_mm: Optional[float] = None,
+        y2_mm: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """
+        Apply a geometric relation/constraint to currently selected or coordinate-identified 2D sketch entities.
+        constraint_type: 'horizontal', 'vertical', 'collinear', 'perpendicular', 'parallel',
+                         'tangent', 'concentric', 'coincident', 'midpoint', 'equal', 'symmetric', or 'fix'.
+        x1_mm, y1_mm: Optional 2D sketch coordinates in mm to select first entity.
+        x2_mm, y2_mm: Optional 2D sketch coordinates in mm to select second entity.
+        """
+        constraint_map = {
+            "horizontal": "sgHORIZONTAL2D",
+            "vertical": "sgVERTICAL2D",
+            "collinear": "sgCOLINEAR",
+            "perpendicular": "sgPERPENDICULAR",
+            "parallel": "sgPARALLEL",
+            "tangent": "sgTANGENT",
+            "concentric": "sgCONCENTRIC",
+            "coincident": "sgCOINCIDENT",
+            "midpoint": "sgATMIDDLE",
+            "equal": "sgSAMELENGTH",
+            "symmetric": "sgSYMMETRIC",
+            "fix": "sgFIXED",
+        }
+        key = constraint_type.strip().lower() if isinstance(constraint_type, str) else ""
+        if key not in constraint_map:
+            raise ValueError(
+                f"Unsupported sketch constraint '{constraint_type}'. Valid options: {list(constraint_map.keys())}"
+            )
+
+        has_1 = (x1_mm is not None) or (y1_mm is not None)
+        if has_1 and not (x1_mm is not None and y1_mm is not None):
+            raise ValueError("Both x1_mm and y1_mm must be provided together.")
+        has_2 = (x2_mm is not None) or (y2_mm is not None)
+        if has_2 and not (x2_mm is not None and y2_mm is not None):
+            raise ValueError("Both x2_mm and y2_mm must be provided together.")
+
+        for c, cname in [(x1_mm, "x1_mm"), (y1_mm, "y1_mm"), (x2_mm, "x2_mm"), (y2_mm, "y2_mm")]:
+            if c is not None and not (isinstance(c, (int, float)) and math.isfinite(c)):
+                raise ValueError(f"Coordinate {cname} must be finite, got {c}")
+
+        doc = self.doc_mgr.get_active_doc()
+        ext = getattr(doc, "Extension", None)
+
+        def _select_sketch_pt(xm: float, ym: float, append: bool) -> bool:
+            for kind in ("SKETCHSEGMENT", "SKETCHPOINT", ""):
+                try:
+                    if ext is not None and hasattr(ext, "SelectByID2"):
+                        v_call = getattr(ext, "NewSelectData", None)
+                        if ext.SelectByID2("", kind, xm, ym, 0.0, append, 0, v_call, 0):
+                            return True
+                except Exception:
+                    pass
+                try:
+                    if doc.SelectByID("", kind, xm, ym, 0.0):
+                        return True
+                except Exception:
+                    pass
+            return False
+
+        if x1_mm is not None and y1_mm is not None:
+            doc.ClearSelection2(True)
+            if not _select_sketch_pt(mm_to_meters(x1_mm), mm_to_meters(y1_mm), False):
+                raise FeatureCreationError(f"Could not select first sketch entity at ({x1_mm}, {y1_mm}) mm.")
+
+        if x2_mm is not None and y2_mm is not None:
+            if not _select_sketch_pt(mm_to_meters(x2_mm), mm_to_meters(y2_mm), True):
+                raise FeatureCreationError(f"Could not select second sketch entity at ({x2_mm}, {y2_mm}) mm.")
+
+        sw_const = constraint_map[key]
+        doc.SketchAddConstraints(sw_const)
+        return {
+            "constraint": key,
+            "sw_constant": sw_const,
+            "applied": True,
         }

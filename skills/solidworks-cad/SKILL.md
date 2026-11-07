@@ -1,13 +1,13 @@
 ---
 name: solidworks-cad
-description: Autonomous CAD engineering, 3D parametric modeling, kinematic assembly, mass properties analysis, and 2D drafting automation for SolidWorks 2026 SP4.1 using 52 dedicated tools. Use when creating 3D CAD parts, running assemblies, applying materials, generating engineering drawings, and rendering photorealistic views.
+description: Autonomous CAD engineering, 3D parametric modeling, kinematic assembly, mass properties analysis, and 2D drafting automation for SolidWorks 2026 SP4.1 using 58 dedicated tools. Use when creating 3D CAD parts, running assemblies, applying materials, generating engineering drawings, and rendering photorealistic views.
 ---
 
 # SolidWorks 2026 CAD Automation Skill
 
-This skill guides agents in driving **SolidWorks 2026 SP4.1** autonomously via the 52 tools exposed by the `solidworks_cad` MCP server.
+This skill guides agents in driving **SolidWorks 2026 SP4.1** autonomously via the 58 tools exposed by the `solidworks_cad` MCP server.
 
-## 1. Tool Catalog & Exact Schemas (52 Tools)
+## 1. Tool Catalog & Exact Schemas (58 Tools)
 
 ### A. Document Lifecycle & Session (8 Tools)
 - `sw_get_session_info()`: Checks connection status and active document in SolidWorks.
@@ -19,7 +19,7 @@ This skill guides agents in driving **SolidWorks 2026 SP4.1** autonomously via t
 - `sw_close_doc(save_changes: bool = False)`: Closes the active document safely.
 - `sw_list_open_documents()`: Lists all CAD documents currently open in the session.
 
-### B. 2D Sketching & Wireframe (10 Tools)
+### B. 2D Sketching & Wireframe (11 Tools)
 - `sw_create_sketch_on_plane(plane_name: str = "Front Plane")`: Opens a sketch on a standard plane ("Front Plane", "Top Plane", "Right Plane").
 - `sw_create_sketch_on_face(x_mm: float, y_mm: float, z_mm: float)`: Opens a sketch on a planar face at given 3D coordinates.
 - `sw_close_sketch()`: Closes and exits the active sketch.
@@ -30,8 +30,9 @@ This skill guides agents in driving **SolidWorks 2026 SP4.1** autonomously via t
 - `sw_draw_arc(x1_mm: float, y1_mm: float, x2_mm: float, y2_mm: float, x3_mm: float, y3_mm: float)`: Draws a 3-point circular arc from (x1,y1) to (x2,y2) passing through (x3,y3).
 - `sw_create_3d_sketch()`: Creates and activates an unconstrained 3D Sketch for Phase 0 master kinematic skeletons and layout wireframes.
 - `sw_draw_3d_line(x1_mm: float, y1_mm: float, z1_mm: float, x2_mm: float, y2_mm: float, z2_mm: float)`: Draws a 3D line segment between two spatial coordinates in millimeters within an active 3D sketch.
+- `sw_add_sketch_constraint(constraint_type: str, x1_mm: Optional[float] = None, y1_mm: Optional[float] = None, x2_mm: Optional[float] = None, y2_mm: Optional[float] = None)`: Applies a geometric sketch relation ('horizontal', 'vertical', 'collinear', 'perpendicular', 'parallel', 'tangent', 'concentric', 'coincident', 'midpoint', 'equal', 'symmetric', 'fix').
 
-### C. 3D Feature Modeling (12 Tools)
+### C. 3D Feature Modeling (16 Tools)
 - `sw_boss_extrude(depth_mm: float, flip_dir: bool = False)`: Extrudes the active closed sketch into a solid boss.
 - `sw_cut_extrude(depth_mm: float, flip_dir: bool = False)`: Cuts material into a solid body using the active sketch.
 - `sw_revolve_boss(angle_deg: float = 360.0, reverse_dir: bool = False)`: Revolves active sketch profile around its centerline axis.
@@ -41,6 +42,10 @@ This skill guides agents in driving **SolidWorks 2026 SP4.1** autonomously via t
 - `sw_fillet(radius_mm: float, edge_x_mm: Optional[float] = None, edge_y_mm: Optional[float] = None, edge_z_mm: Optional[float] = None)`: Rounds selected edges, or edge at given 3D coordinates.
 - `sw_chamfer(distance_mm: float, angle_deg: float = 45.0, edge_x_mm: Optional[float] = None, edge_y_mm: Optional[float] = None, edge_z_mm: Optional[float] = None)`: Bevels selected edges, or edge at given 3D coordinates.
 - `sw_circular_pattern(feature_name: str, total_instances: int = 6, total_angle_deg: float = 360.0, equal_spacing: bool = True, axis_x_mm: Optional[float] = None, axis_y_mm: Optional[float] = None, axis_z_mm: Optional[float] = None, axis_entity_name: str = "", flip_dir: bool = False, spacing_deg: Optional[float] = None, axis_name: str = "", reverse_dir: bool = False)`: Patterns features radially around an axis or cylindrical face coordinate. Note: `feature_name` is required.
+- `sw_linear_pattern(feature_name: str, spacing1_mm: float, instances1: int = 2, dir1_entity: str = "Right Plane", spacing2_mm: float = 0.0, instances2: int = 1, dir2_entity: str = "", flip_dir1: bool = False, flip_dir2: bool = False)`: Patterns a 3D feature linearly along one or two directional references.
+- `sw_shell(thickness_mm: float, face_x_mm: Optional[float] = None, face_y_mm: Optional[float] = None, face_z_mm: Optional[float] = None, shell_outward: bool = False)`: Hollows out a solid body with constant wall thickness, removing the specified face.
+- `sw_hole_wizard(hole_type: str = "tapped", standard: str = "ISO", fastener_size: str = "M6", diameter_mm: float = 6.0, depth_mm: float = 15.0, x_mm: float = 0.0, y_mm: float = 0.0, z_mm: float = 0.0, through_all: bool = False, counterbore_diameter_mm: float = 10.0, counterbore_depth_mm: float = 5.0, countersink_angle_deg: float = 90.0)`: Creates standardized ISO/ANSI tapped, counterbore, countersink, or simple holes via HoleWizard5.
+- `sw_loft_boss(profile1_sketch: str, profile2_sketch: str, guide_curve_sketch: str = "", closed_loft: bool = False, thin_feature: bool = False, thin_thickness_mm: float = 1.0)`: Creates a 3D Lofted Boss blending between two sketch profiles.
 - `sw_rebuild(force: bool = True)`: Forces full model regeneration and updates FeatureManager dependencies.
 - `sw_create_reference_plane(plane_name: str = "", first_reference: str = "Front Plane", constraint_type: str = "distance", distance_mm: float = 0.0, angle_deg: float = 0.0, second_reference: str = "", flip: bool = False)`: Creates a new datum Reference Plane with distance offset, angle incline, or coincident constraints.
 - `sw_mirror_feature(plane_name: str, feature_name: str = "", mirror_body: bool = False, geometry_pattern: bool = False)`: Mirrors features or solid bodies across a datum reference plane or planar face.
@@ -69,7 +74,7 @@ This skill guides agents in driving **SolidWorks 2026 SP4.1** autonomously via t
 - `sw_list_components(top_level_only: bool = True)`: Lists all components in assembly with suppression, grounding state, and bounding boxes.
 - `sw_check_interference(treat_coincidence_as_interference: bool = False)`: Detects mechanical collisions and clash volumes.
 
-### H. 2D Drafting & Manufacturing Drawings (8 Tools)
+### H. 2D Drafting & Manufacturing Drawings (9 Tools)
 - `sw_new_drawing(template_path: str = "")`: Creates a new 2D drawing sheet.
 - `sw_create_drawing_view(model_path: str, orientation: str = "*Front", x_mm: float = 100.0, y_mm: float = 100.0, scale: str = "1:1")`: Inserts a model view ('*Front', '*Top', '*Right', '*Isometric').
 - `sw_create_standard_views(model_path: str, center_x_mm: float = 150.0, center_y_mm: float = 120.0, spacing_mm: float = 90.0, include_isometric: bool = True, scale: str = "1:1")`: Automatically generates standard 3-view orthogonal projections + optional Isometric.
@@ -77,6 +82,7 @@ This skill guides agents in driving **SolidWorks 2026 SP4.1** autonomously via t
 - `sw_list_drawing_views()`: Enumerates all drawing views on the active sheet.
 - `sw_auto_dimension(view_name: str, scheme: str = "baseline", horizontal_placement: str = "above", vertical_placement: str = "right")`: Automatically places dimensions on a specified view.
 - `sw_add_drawing_note(text: str, x_mm: float = 20.0, y_mm: float = 20.0)`: Inserts an annotation note or title block label.
+- `sw_insert_bom_table(view_name: str, x_mm: float = 200.0, y_mm: float = 50.0, bom_type: str = "top_level", configuration: str = "Default", table_template: str = "")`: Inserts a manufacturing Bill of Materials (BOM) table on the active drawing sheet.
 - `sw_export_drawing(output_path: str, format_type: str = "auto")`: Silently exports drawing to PDF, DXF, DWG, or native SLDDRW.
 
 ---
@@ -123,3 +129,8 @@ This skill guides agents in driving **SolidWorks 2026 SP4.1** autonomously via t
 - Never invent parameters that do not exist in the tool schemas above.
 - Always verify active document status using `sw_get_session_info()` or `sw_list_open_documents()` before issuing geometric operations.
 - Always check return values of `sw_get_mass_properties()` to ensure solid volume $> 0$ after extrusions or cuts.
+
+## 4. LLM Token Efficiency & Context Management
+- **Query Tool Filtering**: When querying engineering materials with `sw_list_materials(search="1020")`, always provide a specific search query or classification keyword rather than dumping the full catalog.
+- **Context Compaction**: In multi-part CAD sessions (e.g. engine development), recommend the `/compact` command after completing each major component (e.g. after modeling the crankshaft or piston) to keep the context window lean (< 25k tokens).
+- **Subagent Workflows**: For independent component modeling, delegate the construction of individual parts to subagents to prevent monolithic context expansion.

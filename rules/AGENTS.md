@@ -23,3 +23,7 @@ When creating, modifying, assembling, or drafting engineering models in SolidWor
 - **Save prior to drafting**: Drawing views reference disk files. Always save parts (`sw_save_doc(output_path=...)`) before creating drawing documents (`sw_new_drawing`).
 - **Section views**: Use `sw_create_section_view(parent_view_name, cut_start_x_mm, cut_start_y_mm, cut_end_x_mm, cut_end_y_mm, placement_x_mm, placement_y_mm, section_label='A', reverse_direction=False)` to document internal bores, porting, and fluid passages.
 - **Exporting artifacts**: Export production-ready sheets using `sw_export_drawing(output_path=..., format_type='pdf')` and capture high-resolution renders with `sw_capture_viewport(output_path=...)`.
+
+## 5. Token Efficiency and Context Management
+- **Targeted Queries**: Always filter `sw_list_materials` with a specific keyword (`search='...'` or `classification='...'`) to avoid context window flooding.
+- **Periodic Compaction**: In long CAD sessions involving multiple parts or assemblies, recommend `/compact` after completing each discrete component milestone to prevent attention degradation and token exhaustion.

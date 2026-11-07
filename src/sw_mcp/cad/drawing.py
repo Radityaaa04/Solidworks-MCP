@@ -546,3 +546,107 @@ class DrawingManager:
             "scale_decimal": round(sec_view.ScaleDecimal, 4) if hasattr(sec_view, "ScaleDecimal") else 1.0,
             "status": "created",
         }
+
+    def insert_bom_table(
+        self,
+        view_name: str,
+        x_mm: float = 200.0,
+        y_mm: float = 50.0,
+        bom_type: str = "top_level",
+        configuration: str = "Default",
+        table_template: str = "",
+    ) -> Dict[str, Any]:
+        """
+        Insert a manufacturing Bill of Materials (BOM) table associated with a drawing view.
+        """
+        if not view_name or not str(view_name).strip():
+            raise ValueError("view_name is required to insert a BOM table.")
+        for c, cname in [(x_mm, "x_mm"), (y_mm, "y_mm")]:
+            if not isinstance(c, (int, float)):
+                raise ValueError(f"{cname} must be numeric, got {c}")
+
+        bom_type_map = {
+            "top_level": 1,     # swBomType_TopLevelOnly
+            "parts_only": 2,    # swBomType_PartsOnly
+            "indented": 3,      # swBomType_Indented
+        }
+        bt_key = bom_type.strip().lower() if isinstance(bom_type, str) else ""
+        if bt_key not in bom_type_map:
+            raise ValueError(f"Unsupported bom_type '{bom_type}'. Valid options: {list(bom_type_map.keys())}")
+
+        draw_doc = self.get_active_drawing()
+
+        # Locate view by name
+        target_view = None
+        v = draw_doc.GetFirstView
+        while v is not None:
+            v_name = v.GetName2 if not callable(getattr(v, "GetName2", None)) else v.GetName2()
+            if str(v_name).strip().lower() == view_name.strip().lower():
+                target_view = v
+                break
+            v = v.GetNextView
+
+        if target_view is None:
+            raise DrawingError(f"Drawing view '{view_name}' not found on the active drawing sheet.")
+
+        tmpl = table_template.strip() if table_template else ""
+        if not tmpl or not os.path.exists(tmpl):
+            patterns = [
+                r"C:\Program Files\SOLIDWORKS Corp\SOLIDWORKS\lang\english\bom-standard.sldbomtbt",
+                r"C:\Program Files\SOLIDWORKS Corp\SOLIDWORKS\lang\*\bom-standard.sldbomtbt",
+            ]
+            for pat in patterns:
+                matches = glob.glob(pat)
+                if matches:
+                    tmpl = matches[0]
+                    break
+
+        bom_feat = None
+        if hasattr(target_view, "InsertBomTable4"):
+            bom_feat = target_view.InsertBomTable4(
+                False,
+                mm_to_meters(x_mm),
+                mm_to_meters(y_mm),
+                1,  # swBOMConfigurationAnchor_TopLeft
+                bom_type_map[bt_key],
+                configuration,
+                tmpl,
+                False,
+                0,  # swNumberingType_Detailed
+                False,
+            )
+        elif hasattr(target_view, "InsertBomTable3"):
+            bom_feat = target_view.InsertBomTable3(
+                False,
+                mm_to_meters(x_mm),
+                mm_to_meters(y_mm),
+                1,
+                bom_type_map[bt_key],
+                configuration,
+                tmpl,
+                False,
+            )
+
+        if not bom_feat:
+            raise DrawingError(f"Failed to insert BOM table for view '{view_name}'.")
+
+        feat_name = getattr(bom_feat, "Name", "BomTable1")
+        try:
+            get_feat = getattr(bom_feat, "GetFeature", None)
+            if callable(get_feat):
+                f_obj = get_feat()
+                if f_obj and hasattr(f_obj, "Name"):
+                    feat_name = f_obj.Name
+            elif get_feat and hasattr(get_feat, "Name"):
+                feat_name = get_feat.Name
+        except Exception:
+            pass
+
+        return {
+            "bom_table": str(feat_name),
+            "view_name": view_name,
+            "bom_type": bt_key,
+            "configuration": configuration,
+            "position_mm": [x_mm, y_mm],
+            "status": "created",
+        }

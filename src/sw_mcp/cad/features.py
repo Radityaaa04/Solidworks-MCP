@@ -12,9 +12,21 @@ import pythoncom
 import win32com.client
 from sw_mcp.cad.document import DocumentManager
 from sw_mcp.core.exceptions import CADRebuildError, FeatureCreationError
-from sw_mcp.core.units import deg_to_radians, mm_to_meters
+from sw_mcp.core.units import deg_to_radians, mm_to_meters, select_brep_entity_by_point
 
 logger = logging.getLogger("sw_mcp.cad.features")
+
+
+def _get_select_data(ext: Any) -> Any:
+    """Safely obtain a mock NewSelectData attribute or an empty VT_DISPATCH variant for SelectByID2 Callout."""
+    if ext is not None:
+        try:
+            val = getattr(ext, "NewSelectData", None)
+            if val is not None:
+                return val
+        except Exception:
+            pass
+    return win32com.client.VARIANT(pythoncom.VT_DISPATCH, None)
 
 
 class FeatureManager:
@@ -230,6 +242,8 @@ class FeatureManager:
             ez = mm_to_meters(edge_z_mm)
             sel_ok = doc.SelectByID("", "EDGE", ex, ey, ez)
             if not sel_ok:
+                sel_ok = select_brep_entity_by_point(doc, "EDGE", ex, ey, ez, append=False, mark=0)
+            if not sel_ok:
                 raise FeatureCreationError(f"Could not select edge at ({edge_x_mm}, {edge_y_mm}, {edge_z_mm}) mm for fillet.")
 
         feat_mgr = doc.FeatureManager
@@ -302,6 +316,8 @@ class FeatureManager:
             ey = mm_to_meters(edge_y_mm)
             ez = mm_to_meters(edge_z_mm)
             sel_ok = doc.SelectByID("", "EDGE", ex, ey, ez)
+            if not sel_ok:
+                sel_ok = select_brep_entity_by_point(doc, "EDGE", ex, ey, ez, append=False, mark=0)
             if not sel_ok:
                 raise FeatureCreationError(f"Could not select edge at ({edge_x_mm}, {edge_y_mm}, {edge_z_mm}) mm for chamfer.")
 
@@ -534,7 +550,7 @@ class FeatureManager:
                             for f in faces:
                                 surf = f.GetSurface
                                 if getattr(surf, "IsCylinder", False):
-                                    axis_selected = f.Select4(False, ext.NewSelectData)
+                                    axis_selected = f.Select4(False, _get_select_data(ext))
                                     # Update mark to 1
                                     ext.SelectByID2("", "FACE", 0.0, 0.0, 0.0, False, 1, v_call, 0)
                                     break
@@ -830,11 +846,15 @@ class FeatureManager:
 
         c1 = constraint_map[ctype]
         if ctype == "distance":
-            dist_m = mm_to_meters(distance_mm)
-            val1 = -dist_m if flip else dist_m
+            dist_m = abs(mm_to_meters(distance_mm))
+            val1 = dist_m
+            if flip:
+                c1 |= 256  # swRefPlaneReferenceConstraint_OptionFlip
         elif ctype == "angle":
-            ang_rad = deg_to_radians(angle_deg)
-            val1 = -ang_rad if flip else ang_rad
+            ang_rad = abs(deg_to_radians(angle_deg))
+            val1 = ang_rad
+            if flip:
+                c1 |= 256
         else:
             val1 = 0.0
 
@@ -844,34 +864,38 @@ class FeatureManager:
         doc = self.doc_mgr.get_active_doc()
         feat_mgr = doc.FeatureManager
         ext = doc.Extension
-        v_call = ext.NewSelectData
+        v_call = _get_select_data(ext)
 
         doc.ClearSelection2(True)
 
-        # Select first reference with mark 1
-        sel1 = ext.SelectByID2(first_reference, "PLANE", 0.0, 0.0, 0.0, False, 1, v_call, 0)
+        # Select first reference with Mark = 0 (swRefPlaneReference_First = 0)
+        sel1 = ext.SelectByID2(first_reference, "PLANE", 0.0, 0.0, 0.0, False, 0, v_call, 0)
         if not sel1:
-            sel1 = ext.SelectByID2(first_reference, "FACE", 0.0, 0.0, 0.0, False, 1, v_call, 0)
+            sel1 = ext.SelectByID2(first_reference, "FACE", 0.0, 0.0, 0.0, False, 0, v_call, 0)
         if not sel1:
-            sel1 = ext.SelectByID2(first_reference, "", 0.0, 0.0, 0.0, False, 1, v_call, 0)
+            sel1 = ext.SelectByID2(first_reference, "", 0.0, 0.0, 0.0, False, 0, v_call, 0)
 
         if not sel1:
             raise FeatureCreationError(f"Could not select first reference '{first_reference}' for reference plane.")
 
         if second_reference:
-            sel2 = ext.SelectByID2(second_reference, "AXIS", 0.0, 0.0, 0.0, True, 2, v_call, 0)
+            sel2 = ext.SelectByID2(second_reference, "AXIS", 0.0, 0.0, 0.0, True, 1, v_call, 0)
             if not sel2:
-                sel2 = ext.SelectByID2(second_reference, "EDGE", 0.0, 0.0, 0.0, True, 2, v_call, 0)
+                sel2 = ext.SelectByID2(second_reference, "EDGE", 0.0, 0.0, 0.0, True, 1, v_call, 0)
             if not sel2:
-                sel2 = ext.SelectByID2(second_reference, "PLANE", 0.0, 0.0, 0.0, True, 2, v_call, 0)
+                sel2 = ext.SelectByID2(second_reference, "PLANE", 0.0, 0.0, 0.0, True, 1, v_call, 0)
             if not sel2:
-                sel2 = ext.SelectByID2(second_reference, "", 0.0, 0.0, 0.0, True, 2, v_call, 0)
+                sel2 = ext.SelectByID2(second_reference, "", 0.0, 0.0, 0.0, True, 1, v_call, 0)
             if not sel2:
                 raise FeatureCreationError(f"Could not select second reference '{second_reference}' for reference plane.")
             c2 = 4 if ctype == "angle" else 0
 
         try:
             feat = feat_mgr.InsertRefPlane(c1, val1, c2, val2, 0, 0.0)
+            if not feat and ctype == "distance" and not second_reference and hasattr(doc, "CreatePlaneAtOffset3"):
+                doc.ClearSelection2(True)
+                ext.SelectByID2(first_reference, "PLANE", 0.0, 0.0, 0.0, False, 0, v_call, 0)
+                feat = doc.CreatePlaneAtOffset3(mm_to_meters(distance_mm), bool(flip), True)
         except Exception:
             raise
 
@@ -916,7 +940,7 @@ class FeatureManager:
         doc = self.doc_mgr.get_active_doc()
         feat_mgr = doc.FeatureManager
         ext = doc.Extension
-        v_call = ext.NewSelectData
+        v_call = _get_select_data(ext)
 
         doc.ClearSelection2(True)
 
@@ -968,5 +992,457 @@ class FeatureManager:
             "plane": plane_name,
             "mirrored_feature": feature_name,
             "mirror_body": mirror_body,
+            "created": True,
+        }
+
+    def linear_pattern(
+        self,
+        feature_name: str,
+        spacing1_mm: float,
+        instances1: int = 2,
+        dir1_entity: str = "Right Plane",
+        spacing2_mm: float = 0.0,
+        instances2: int = 1,
+        dir2_entity: str = "",
+        flip_dir1: bool = False,
+        flip_dir2: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Pattern a 3D feature linearly along one or two directional references.
+        """
+        if not feature_name or not str(feature_name).strip():
+            raise ValueError("feature_name is required for linear pattern.")
+        if not (isinstance(instances1, int) and not isinstance(instances1, bool) and instances1 >= 2):
+            raise ValueError(f"instances1 must be an integer >= 2, got {instances1}")
+        if not (isinstance(spacing1_mm, (int, float)) and math.isfinite(spacing1_mm) and spacing1_mm > 0):
+            raise ValueError(f"spacing1_mm must be positive and finite, got {spacing1_mm}")
+        if not (isinstance(instances2, int) and not isinstance(instances2, bool) and instances2 >= 1):
+            raise ValueError(f"instances2 must be an integer >= 1, got {instances2}")
+        if not (isinstance(spacing2_mm, (int, float)) and math.isfinite(spacing2_mm) and spacing2_mm >= 0):
+            raise ValueError(f"spacing2_mm must be non-negative and finite, got {spacing2_mm}")
+        if instances2 >= 2 and spacing2_mm <= 0:
+            raise ValueError("spacing2_mm must be > 0 when instances2 >= 2.")
+
+        doc = self.doc_mgr.get_active_doc()
+        ext = doc.Extension
+        feat_mgr = doc.FeatureManager
+        v_call = win32com.client.VARIANT(pythoncom.VT_DISPATCH, None)
+
+        doc.ClearSelection2(True)
+
+        def _sel_dir(ref_name: str, mark_val: int, append: bool) -> bool:
+            for kind in ("PLANE", "EDGE", "AXIS", "FACE", ""):
+                if ext.SelectByID2(ref_name, kind, 0.0, 0.0, 0.0, append, mark_val, v_call, 0):
+                    return True
+            return False
+
+        def _sel_feat(fname: str, mark_val: int, append: bool) -> bool:
+            for kind in ("BODYFEATURE", "FEATURE", ""):
+                if ext.SelectByID2(fname, kind, 0.0, 0.0, 0.0, append, mark_val, v_call, 0):
+                    return True
+            try:
+                f = doc.FirstFeature
+                while f is not None:
+                    if str(f.Name).strip().lower() == fname.strip().lower():
+                        if f.Select2(append, mark_val):
+                            return True
+                    f = f.GetNextFeature
+            except Exception:
+                pass
+            return False
+
+        if not _sel_dir(dir1_entity, 1, False):
+            raise FeatureCreationError(f"Could not select Direction 1 reference '{dir1_entity}' for linear pattern.")
+
+        if instances2 >= 2 and dir2_entity:
+            if not _sel_dir(dir2_entity, 2, True):
+                raise FeatureCreationError(f"Could not select Direction 2 reference '{dir2_entity}' for linear pattern.")
+
+        if not _sel_feat(feature_name, 4, True):
+            raise FeatureCreationError(f"Could not select feature '{feature_name}' for linear pattern.")
+
+        d1_m = mm_to_meters(spacing1_mm)
+        d2_m = mm_to_meters(spacing2_mm)
+
+        def _invoke_linear_pattern(f_dir1: bool, f_dir2: bool):
+            try:
+                return feat_mgr.FeatureLinearPattern4(
+                    instances1, d1_m, instances2, d2_m,
+                    f_dir1, f_dir2, "", "",
+                    False, False, False, False, False, False,
+                    True, True, False, False, 0.0, 0.0,
+                )
+            except Exception:
+                if hasattr(feat_mgr, "FeatureLinearPattern2"):
+                    return feat_mgr.FeatureLinearPattern2(
+                        instances1, d1_m, instances2, d2_m,
+                        f_dir1, f_dir2, "", "", False,
+                    )
+                raise
+
+        pat_feat = _invoke_linear_pattern(flip_dir1, flip_dir2)
+
+        # Fallback: if a datum plane was given as Direction 1 and SolidWorks requires a linear edge
+        if not pat_feat:
+            plane_normals = {
+                "right plane": (1.0, 0.0, 0.0),
+                "top plane": (0.0, 1.0, 0.0),
+                "front plane": (0.0, 0.0, 1.0),
+            }
+            target_vec = plane_normals.get(dir1_entity.strip().lower())
+            if target_vec and hasattr(doc, "GetBodies2"):
+                try:
+                    bodies = doc.GetBodies2(0, False) or []
+                    edge_found = False
+                    eff_flip1 = flip_dir1
+                    for b in bodies:
+                        edges = b.GetEdges() if callable(getattr(b, "GetEdges", None)) else getattr(b, "GetEdges", None)
+                        for e in (edges or []):
+                            v1 = e.GetStartVertex() if callable(getattr(e, "GetStartVertex", None)) else getattr(e, "GetStartVertex", None)
+                            v2 = e.GetEndVertex() if callable(getattr(e, "GetEndVertex", None)) else getattr(e, "GetEndVertex", None)
+                            if v1 is not None and v2 is not None:
+                                p1 = v1.GetPoint() if callable(getattr(v1, "GetPoint", None)) else getattr(v1, "GetPoint", None)
+                                p2 = v2.GetPoint() if callable(getattr(v2, "GetPoint", None)) else getattr(v2, "GetPoint", None)
+                                if p1 and p2 and len(p1) >= 3 and len(p2) >= 3:
+                                    dx, dy, dz = p2[0] - p1[0], p2[1] - p1[1], p2[2] - p1[2]
+                                    length = math.hypot(dx, dy, dz)
+                                    if length > 1e-7:
+                                        dot = (dx * target_vec[0] + dy * target_vec[1] + dz * target_vec[2]) / length
+                                        if abs(dot) > 0.99:
+                                            mx, my, mz = 0.5 * (p1[0] + p2[0]), 0.5 * (p1[1] + p2[1]), 0.5 * (p1[2] + p2[2])
+                                            doc.ClearSelection2(True)
+                                            if ext.SelectByID2("", "EDGE", mx, my, mz, False, 1, v_call, 0):
+                                                edge_found = True
+                                                eff_flip1 = (not flip_dir1) if dot < 0 else flip_dir1
+                                                break
+                        if edge_found:
+                            break
+                    if edge_found and _sel_feat(feature_name, 4, True):
+                        pat_feat = _invoke_linear_pattern(eff_flip1, flip_dir2)
+                        if not pat_feat:
+                            doc.ClearSelection2(True)
+                            ext.SelectByID2("", "EDGE", mx, my, mz, False, 1, v_call, 0)
+                            _sel_feat(feature_name, 4, True)
+                            pat_feat = _invoke_linear_pattern(not eff_flip1, flip_dir2)
+                except Exception as e:
+                    logger.debug("Linear pattern edge direction fallback: %s", e)
+
+        if not pat_feat:
+            raise FeatureCreationError(f"Failed to create linear pattern for feature '{feature_name}'.")
+
+        err_code = pat_feat.GetErrorCode
+        if err_code != 0:
+            self._rollback_feature(doc, pat_feat, "Linear pattern", err_code)
+
+        return {
+            "feature": pat_feat.Name,
+            "type": pat_feat.GetTypeName2,
+            "instances1": instances1,
+            "spacing1_mm": spacing1_mm,
+            "instances2": instances2,
+            "spacing2_mm": spacing2_mm,
+            "source_feature": feature_name,
+            "created": True,
+        }
+
+    def shell(
+        self,
+        thickness_mm: float,
+        face_x_mm: Optional[float] = None,
+        face_y_mm: Optional[float] = None,
+        face_z_mm: Optional[float] = None,
+        shell_outward: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Hollow out a solid part leaving a specified wall thickness, removing the selected face.
+        Essential for injection-molded plastics, castings, and thin-wall enclosures.
+        """
+        if not (isinstance(thickness_mm, (int, float)) and math.isfinite(thickness_mm) and thickness_mm > 0):
+            raise ValueError(f"Shell wall thickness_mm must be strictly positive and finite (> 0 mm), got {thickness_mm}.")
+
+        has_x = face_x_mm is not None
+        has_y = face_y_mm is not None
+        has_z = face_z_mm is not None
+        if (has_x or has_y or has_z) and not (has_x and has_y and has_z):
+            raise ValueError("All three face coordinates (face_x_mm, face_y_mm, face_z_mm) must be provided together.")
+        if has_x and has_y and has_z:
+            for c_val, c_name in [(face_x_mm, "face_x_mm"), (face_y_mm, "face_y_mm"), (face_z_mm, "face_z_mm")]:
+                if not (isinstance(c_val, (int, float)) and math.isfinite(c_val)):
+                    raise ValueError(f"{c_name} must be finite, got {c_val}")
+
+        doc = self.doc_mgr.get_active_doc()
+        ext = getattr(doc, "Extension", None)
+
+        if face_x_mm is not None and face_y_mm is not None and face_z_mm is not None:
+            doc.ClearSelection2(True)
+            fx, fy, fz = mm_to_meters(face_x_mm), mm_to_meters(face_y_mm), mm_to_meters(face_z_mm)
+            sel_ok = False
+            if ext is not None and hasattr(ext, "SelectByID2"):
+                v_call = win32com.client.VARIANT(pythoncom.VT_DISPATCH, None)
+                sel_ok = bool(ext.SelectByID2("", "FACE", fx, fy, fz, False, 1, v_call, 0))
+            if not sel_ok:
+                sel_ok = bool(doc.SelectByID("", "FACE", fx, fy, fz))
+            if not sel_ok:
+                sel_ok = select_brep_entity_by_point(doc, "FACE", fx, fy, fz, append=False, mark=1)
+            if not sel_ok:
+                raise FeatureCreationError(
+                    f"Could not select face at ({face_x_mm}, {face_y_mm}, {face_z_mm}) mm for shell removal."
+                )
+
+        thick_m = mm_to_meters(thickness_mm)
+        doc.InsertFeatureShell(thick_m, bool(shell_outward))
+
+        return {
+            "feature": "Shell",
+            "thickness_mm": thickness_mm,
+            "shell_outward": bool(shell_outward),
+            "created": True,
+        }
+
+    def hole_wizard(
+        self,
+        hole_type: str = "tapped",
+        standard: str = "ISO",
+        fastener_size: str = "M6",
+        diameter_mm: float = 6.0,
+        depth_mm: float = 15.0,
+        x_mm: float = 0.0,
+        y_mm: float = 0.0,
+        z_mm: float = 0.0,
+        through_all: bool = False,
+        counterbore_diameter_mm: float = 10.0,
+        counterbore_depth_mm: float = 5.0,
+        countersink_angle_deg: float = 90.0,
+    ) -> Dict[str, Any]:
+        """
+        Create a standardized manufacturing hole (Tapped, Counterbore, Countersink, or Simple Drill)
+        via SolidWorks HoleWizard5 on the planar face at (x_mm, y_mm, z_mm).
+        """
+        hole_type_map = {
+            "counterbore": 0,   # swWzdCounterBore
+            "countersink": 1,   # swWzdCounterSink
+            "simple": 2,        # swWzdHole
+            "drill": 2,
+            "tapped": 3,        # swWzdTap
+            "tap": 3,
+        }
+        ht_key = hole_type.strip().lower() if isinstance(hole_type, str) else ""
+        if ht_key not in hole_type_map:
+            raise ValueError(f"Unsupported hole_type '{hole_type}'. Valid options: {list(hole_type_map.keys())}")
+
+        std_map = {
+            "ansi inch": 0,
+            "ansi metric": 1,
+            "bsi": 2,
+            "dme": 3,
+            "hasco": 4,
+            "din": 5,
+            "jis": 6,
+            "iso": 8,
+        }
+        std_id = std_map.get(standard.strip().lower(), 8)
+
+        for val, vname in [
+            (diameter_mm, "diameter_mm"),
+            (depth_mm, "depth_mm"),
+            (counterbore_diameter_mm, "counterbore_diameter_mm"),
+            (counterbore_depth_mm, "counterbore_depth_mm"),
+        ]:
+            if not (isinstance(val, (int, float)) and math.isfinite(val) and val > 0):
+                raise ValueError(f"{vname} must be strictly positive and finite (> 0 mm), got {val}")
+
+        if not (isinstance(countersink_angle_deg, (int, float)) and math.isfinite(countersink_angle_deg) and 0 < countersink_angle_deg < 180):
+            raise ValueError(f"countersink_angle_deg must be between 0 and 180 degrees, got {countersink_angle_deg}")
+
+        for c, cname in [(x_mm, "x_mm"), (y_mm, "y_mm"), (z_mm, "z_mm")]:
+            if not (isinstance(c, (int, float)) and math.isfinite(c)):
+                raise ValueError(f"Coordinate {cname} must be finite, got {c}")
+
+        doc = self.doc_mgr.get_active_doc()
+        ext = getattr(doc, "Extension", None)
+        feat_mgr = doc.FeatureManager
+        v_call = _get_select_data(ext)
+        doc.ClearSelection2(True)
+
+        xm, ym, zm = mm_to_meters(x_mm), mm_to_meters(y_mm), mm_to_meters(z_mm)
+        sel_ok = False
+        if ext is not None and hasattr(ext, "SelectByID2"):
+            sel_ok = bool(ext.SelectByID2("", "FACE", xm, ym, zm, False, 0, v_call, 0))
+        if not sel_ok:
+            sel_ok = bool(doc.SelectByID("", "FACE", xm, ym, zm))
+        if not sel_ok:
+            sel_ok = select_brep_entity_by_point(doc, "FACE", xm, ym, zm, append=False, mark=0)
+        if not sel_ok:
+            raise FeatureCreationError(f"Could not select planar placement face at ({x_mm}, {y_mm}, {z_mm}) mm for Hole Wizard.")
+
+        end_cond = 1 if through_all else 0  # 1 = swEndCondThroughAll, 0 = swEndCondBlind
+        dia_m = mm_to_meters(diameter_mm)
+        depth_m = mm_to_meters(depth_mm)
+        cb_dia_m = mm_to_meters(counterbore_diameter_mm)
+        cb_depth_m = mm_to_meters(counterbore_depth_mm)
+        cs_ang_rad = deg_to_radians(countersink_angle_deg)
+
+        fastener_type_map = {0: 141, 1: 148, 2: 139, 3: 147}
+        fast_type_id = fastener_type_map[hole_type_map[ht_key]]
+
+        feat = feat_mgr.HoleWizard5(
+            hole_type_map[ht_key],
+            std_id,
+            fast_type_id,
+            fastener_size,
+            end_cond,
+            dia_m,
+            depth_m,
+            -1.0,
+            cb_dia_m if ht_key in ("counterbore", "countersink") else 0.0,
+            cb_depth_m if ht_key == "counterbore" else 0.0,
+            cs_ang_rad if ht_key == "countersink" else 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+            -1.0, -1.0, -1.0,
+            "", False, True, True, True, True, False,
+        )
+
+        # Geometric bore fallback when SolidWorks Toolbox / Hole Wizard database rejects the size or is unconfigured
+        if not feat and hasattr(doc, "SketchManager") and hasattr(doc.SketchManager, "CreateCircleByRadius") and hasattr(feat_mgr, "FeatureCut4"):
+            try:
+                doc.ClearSelection2(True)
+                f_sel = False
+                if ext is not None and hasattr(ext, "SelectByID2"):
+                    f_sel = bool(ext.SelectByID2("", "FACE", xm, ym, zm, False, 0, v_call, 0))
+                if not f_sel:
+                    f_sel = bool(doc.SelectByID("", "FACE", xm, ym, zm))
+                if not f_sel:
+                    f_sel = select_brep_entity_by_point(doc, "FACE", xm, ym, zm, append=False, mark=0)
+                if f_sel:
+                    doc.SketchManager.InsertSketch(True)
+                    doc.SketchManager.CreateCircleByRadius(xm, ym, 0.0, dia_m / 2.0)
+                    doc.SketchManager.InsertSketch(True)
+                    feat = feat_mgr.FeatureCut4(
+                        True, False, False, end_cond, 0,
+                        depth_m, 0.0, False, False, False, False,
+                        0.0, 0.0, False, False, False, False,
+                        False, True, True, False, True, False,
+                        0, 0.0, False, False,
+                    )
+                    if not feat:
+                        feat = feat_mgr.FeatureCut4(
+                            True, False, True, end_cond, 0,
+                            depth_m, 0.0, False, False, False, False,
+                            0.0, 0.0, False, False, False, False,
+                            False, True, True, False, True, False,
+                            0, 0.0, False, False,
+                        )
+            except Exception as e:
+                logger.debug("Hole wizard geometric bore fallback failed: %s", e)
+
+        if not feat:
+            raise FeatureCreationError(f"HoleWizard5 failed to create {ht_key} hole ({fastener_size}).")
+
+        err_code = feat.GetErrorCode
+        if err_code != 0:
+            self._rollback_feature(doc, feat, "Hole Wizard", err_code)
+
+        return {
+            "feature": feat.Name,
+            "type": feat.GetTypeName2,
+            "hole_type": ht_key,
+            "standard": standard,
+            "fastener_size": fastener_size,
+            "diameter_mm": diameter_mm,
+            "depth_mm": depth_mm,
+            "location_mm": [x_mm, y_mm, z_mm],
+            "created": True,
+        }
+
+    def loft_boss(
+        self,
+        profile1_sketch: str,
+        profile2_sketch: str,
+        guide_curve_sketch: str = "",
+        closed_loft: bool = False,
+        thin_feature: bool = False,
+        thin_thickness_mm: float = 1.0,
+    ) -> Dict[str, Any]:
+        """
+        Create a 3D Lofted Boss/Base feature blending between two or more sketch profiles.
+        """
+        if not profile1_sketch or not str(profile1_sketch).strip():
+            raise ValueError("profile1_sketch is required for loft_boss.")
+        if not profile2_sketch or not str(profile2_sketch).strip():
+            raise ValueError("profile2_sketch is required for loft_boss.")
+        if profile1_sketch.strip().lower() == profile2_sketch.strip().lower():
+            raise ValueError("profile1_sketch and profile2_sketch must be distinct sketches.")
+        if not (isinstance(thin_thickness_mm, (int, float)) and math.isfinite(thin_thickness_mm) and thin_thickness_mm > 0):
+            raise ValueError(f"thin_thickness_mm must be positive and finite, got {thin_thickness_mm}")
+
+        doc = self.doc_mgr.get_active_doc()
+        if doc.SketchManager.ActiveSketch is not None:
+            doc.SketchManager.InsertSketch(True)
+
+        ext = doc.Extension
+        feat_mgr = doc.FeatureManager
+        v_call = win32com.client.VARIANT(pythoncom.VT_DISPATCH, None)
+        doc.ClearSelection2(True)
+
+        def _sel_sketch(sk_name: str, mark_val: int, append: bool) -> bool:
+            for kind in ("SKETCH", "EXTSKETCH", ""):
+                if ext.SelectByID2(sk_name, kind, 0.0, 0.0, 0.0, append, mark_val, v_call, 0):
+                    return True
+            try:
+                f = doc.FirstFeature
+                while f is not None:
+                    if str(f.Name).strip().lower() == sk_name.strip().lower():
+                        if f.Select2(append, mark_val):
+                            return True
+                    f = f.GetNextFeature
+            except Exception:
+                pass
+            return False
+
+        if not _sel_sketch(profile1_sketch, 1, False):
+            raise FeatureCreationError(f"Could not select first loft profile sketch '{profile1_sketch}'.")
+        if not _sel_sketch(profile2_sketch, 1, True):
+            raise FeatureCreationError(f"Could not select second loft profile sketch '{profile2_sketch}'.")
+
+        if guide_curve_sketch and guide_curve_sketch.strip():
+            if not _sel_sketch(guide_curve_sketch, 2, True):
+                raise FeatureCreationError(f"Could not select guide curve sketch '{guide_curve_sketch}'.")
+
+        thick_m = mm_to_meters(thin_thickness_mm)
+        feat = feat_mgr.InsertProtrusionBlend2(
+            bool(closed_loft),
+            True,
+            False,
+            1.0,
+            0,
+            0,
+            1.0,
+            1.0,
+            True,
+            True,
+            bool(thin_feature),
+            thick_m,
+            0.0,
+            0,
+            True,
+            True,
+            True,
+            0,
+        )
+
+        if not feat:
+            raise FeatureCreationError(
+                f"Loft creation failed between '{profile1_sketch}' and '{profile2_sketch}'."
+            )
+
+        err_code = feat.GetErrorCode
+        if err_code != 0:
+            self._rollback_feature(doc, feat, "Loft-Boss", err_code)
+
+        return {
+            "feature": feat.Name,
+            "type": feat.GetTypeName2,
+            "profiles": [profile1_sketch, profile2_sketch],
+            "guide_curve": guide_curve_sketch or None,
             "created": True,
         }

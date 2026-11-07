@@ -294,9 +294,8 @@ class InspectionDomains(DomainCase):
 
     def test_nonfinite_legacy_values_observed_without_invented_policy(self):
         manager, _, _ = self.mass_manager(raw=(0, 0, 0, float("nan"), 0.002, 0.01))
-        result = manager.get_mass_properties()
-        self.observe("Legacy non-finite array data is returned without a finite-value policy in this manager.", result=result)
-        self.assertIn("volume_mm3", result)
+        with self.assertRaises(EXC.SolidWorksError):
+            manager.get_mass_properties()
 
     def test_feature_tree_empty(self):
         manager = INS.InspectionManager(self.doc_manager(StrictCOM("model", FirstFeature=None)))
@@ -1135,7 +1134,8 @@ class MaterialDomains(DomainCase):
             "domains_Active": {"material": "domains_Steel" if assigned else "", "db": "domains_DB", "density": 7850.0},
             "domains_Other": {"material": "domains_Alloy", "db": "domains_DB", "density": 2700.0},
         }
-        config = StrictCOM("configuration", Name=active)
+        current = {"active": active}
+        config = StrictCOM("configuration", Name=Property(lambda: current["active"]))
         configuration_manager = StrictCOM("configuration manager", ActiveConfiguration=config)
         def get_material(configuration, db):
             db.value = state[configuration]["db"]
@@ -1145,11 +1145,17 @@ class MaterialDomains(DomainCase):
                 state[configuration]["db"] = db
                 state[configuration]["material"] = material
             return None  # No claim about a SolidWorks return-value enum.
-        mass = StrictCOM("active-config mass", Density=Property(lambda: state[active]["density"]))
+        def show_config(configuration):
+            if configuration in state:
+                current["active"] = configuration
+                return True
+            return False
+        mass = StrictCOM("active-config mass", Density=Property(lambda: state[current["active"]]["density"]))
         ext = StrictCOM("part extension", CreateMassProperty=mass)
         doc = StrictCOM("part", GetType=1, ConfigurationManager=configuration_manager,
             Extension=ext, GetMaterialPropertyName2=method(get_material),
             SetMaterialPropertyName2=method(set_material), MaterialIdName="",
+            ShowConfiguration2=method(show_config),
             ForceRebuild3=method(lambda top: True))
         return MAT.MaterialManager(self.doc_manager(doc)), doc, state
 

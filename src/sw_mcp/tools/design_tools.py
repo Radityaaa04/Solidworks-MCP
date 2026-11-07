@@ -336,3 +336,169 @@ def register_design_tools(mcp: FastMCP) -> None:
                 geometry_pattern=geometry_pattern,
             )
         )
+
+    @mcp.tool()
+    async def sw_add_sketch_constraint(
+        constraint_type: str,
+        x1_mm: Optional[float] = None,
+        y1_mm: Optional[float] = None,
+        x2_mm: Optional[float] = None,
+        y2_mm: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """
+        Apply a geometric sketch constraint/relation to 2D sketch entities.
+        constraint_type: 'horizontal', 'vertical', 'collinear', 'perpendicular', 'parallel',
+                         'tangent', 'concentric', 'coincident', 'midpoint', 'equal', 'symmetric', or 'fix'.
+        x1_mm, y1_mm: Optional 2D coordinates in mm to select first sketch segment/point.
+        x2_mm, y2_mm: Optional 2D coordinates in mm to select second sketch segment/point.
+        """
+        worker = get_sta_worker()
+        return await worker.run(
+            lambda: get_cad_session().sketcher.add_sketch_constraint(
+                constraint_type=constraint_type,
+                x1_mm=x1_mm,
+                y1_mm=y1_mm,
+                x2_mm=x2_mm,
+                y2_mm=y2_mm,
+            )
+        )
+
+    @mcp.tool()
+    async def sw_linear_pattern(
+        feature_name: str,
+        spacing1_mm: float,
+        instances1: int = 2,
+        dir1_entity: str = "Right Plane",
+        spacing2_mm: float = 0.0,
+        instances2: int = 1,
+        dir2_entity: str = "",
+        flip_dir1: bool = False,
+        flip_dir2: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Pattern a 3D feature linearly along one or two directional references.
+        feature_name: Name of feature to pattern (e.g. 'Cut-Extrude1').
+        spacing1_mm: Pitch spacing along Direction 1 in millimeters.
+        instances1: Total instances along Direction 1 (>= 2).
+        dir1_entity: Reference plane, edge, or axis for Direction 1.
+        spacing2_mm: Pitch spacing along Direction 2 in millimeters.
+        instances2: Total instances along Direction 2 (1 for single-direction).
+        dir2_entity: Reference plane, edge, or axis for Direction 2.
+        flip_dir1: Reverse Direction 1.
+        flip_dir2: Reverse Direction 2.
+        """
+        worker = get_sta_worker()
+        return await worker.run(
+            lambda: get_cad_session().features.linear_pattern(
+                feature_name=feature_name,
+                spacing1_mm=spacing1_mm,
+                instances1=instances1,
+                dir1_entity=dir1_entity,
+                spacing2_mm=spacing2_mm,
+                instances2=instances2,
+                dir2_entity=dir2_entity,
+                flip_dir1=flip_dir1,
+                flip_dir2=flip_dir2,
+            )
+        )
+
+    @mcp.tool()
+    async def sw_shell(
+        thickness_mm: float,
+        face_x_mm: Optional[float] = None,
+        face_y_mm: Optional[float] = None,
+        face_z_mm: Optional[float] = None,
+        shell_outward: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Hollow out a 3D solid body with constant wall thickness, removing the face at (face_x_mm, face_y_mm, face_z_mm).
+        thickness_mm: Wall thickness in millimeters.
+        face_x_mm, face_y_mm, face_z_mm: Optional 3D point on the planar/outer face to remove.
+        shell_outward: True to grow wall thickness outward; False for inward.
+        """
+        worker = get_sta_worker()
+        return await worker.run(
+            lambda: get_cad_session().features.shell(
+                thickness_mm=thickness_mm,
+                face_x_mm=face_x_mm,
+                face_y_mm=face_y_mm,
+                face_z_mm=face_z_mm,
+                shell_outward=shell_outward,
+            )
+        )
+
+    @mcp.tool()
+    async def sw_hole_wizard(
+        hole_type: str = "tapped",
+        standard: str = "ISO",
+        fastener_size: str = "M6",
+        diameter_mm: float = 6.0,
+        depth_mm: float = 15.0,
+        x_mm: float = 0.0,
+        y_mm: float = 0.0,
+        z_mm: float = 0.0,
+        through_all: bool = False,
+        counterbore_diameter_mm: float = 10.0,
+        counterbore_depth_mm: float = 5.0,
+        countersink_angle_deg: float = 90.0,
+    ) -> Dict[str, Any]:
+        """
+        Create a standard manufacturing hole (Tapped, Counterbore, Countersink, or Simple) via HoleWizard5.
+        hole_type: 'tapped', 'counterbore', 'countersink', or 'simple'.
+        standard: Engineering standard ('ISO', 'ANSI Metric', 'ANSI Inch', 'DIN', 'JIS').
+        fastener_size: Standard thread/fastener designation (e.g. 'M6', 'M8', 'M10').
+        diameter_mm: Core hole diameter in millimeters.
+        depth_mm: Hole depth in millimeters (when through_all=False).
+        x_mm, y_mm, z_mm: 3D point on the target placement face in millimeters.
+        through_all: True for Through-All end condition; False for Blind depth.
+        counterbore_diameter_mm: Counterbore/countersink head diameter in mm.
+        counterbore_depth_mm: Counterbore socket depth in mm.
+        countersink_angle_deg: Countersink included angle in degrees (default 90.0°).
+        """
+        worker = get_sta_worker()
+        return await worker.run(
+            lambda: get_cad_session().features.hole_wizard(
+                hole_type=hole_type,
+                standard=standard,
+                fastener_size=fastener_size,
+                diameter_mm=diameter_mm,
+                depth_mm=depth_mm,
+                x_mm=x_mm,
+                y_mm=y_mm,
+                z_mm=z_mm,
+                through_all=through_all,
+                counterbore_diameter_mm=counterbore_diameter_mm,
+                counterbore_depth_mm=counterbore_depth_mm,
+                countersink_angle_deg=countersink_angle_deg,
+            )
+        )
+
+    @mcp.tool()
+    async def sw_loft_boss(
+        profile1_sketch: str,
+        profile2_sketch: str,
+        guide_curve_sketch: str = "",
+        closed_loft: bool = False,
+        thin_feature: bool = False,
+        thin_thickness_mm: float = 1.0,
+    ) -> Dict[str, Any]:
+        """
+        Create a 3D Lofted Boss blending smoothly between two sketch profiles.
+        profile1_sketch: Name of first profile sketch (e.g. 'Sketch1').
+        profile2_sketch: Name of second profile sketch (e.g. 'Sketch2').
+        guide_curve_sketch: Optional guide curve sketch name.
+        closed_loft: True to close loft loop smoothly.
+        thin_feature: True to create a thin-walled loft.
+        thin_thickness_mm: Wall thickness in mm when thin_feature=True.
+        """
+        worker = get_sta_worker()
+        return await worker.run(
+            lambda: get_cad_session().features.loft_boss(
+                profile1_sketch=profile1_sketch,
+                profile2_sketch=profile2_sketch,
+                guide_curve_sketch=guide_curve_sketch,
+                closed_loft=closed_loft,
+                thin_feature=thin_feature,
+                thin_thickness_mm=thin_thickness_mm,
+            )
+        )

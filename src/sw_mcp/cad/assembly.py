@@ -15,7 +15,7 @@ import pythoncom
 import win32com.client
 from sw_mcp.cad.document import DocumentManager, swDocASSEMBLY, swDocPART, swOpenDocOptions_Silent
 from sw_mcp.core.exceptions import FeatureCreationError, InvalidSelectionError, SolidWorksError
-from sw_mcp.core.units import deg_to_radians, mm_to_meters
+from sw_mcp.core.units import deg_to_radians, mm_to_meters, select_brep_entity_by_point
 
 logger = logging.getLogger("sw_mcp.cad.assembly")
 
@@ -109,7 +109,11 @@ class AssemblyManager:
             x_mm = float(coord_match.group(2))
             y_mm = float(coord_match.group(3))
             z_mm = float(coord_match.group(4))
-            return self._safe_select(ext, "", ent_type, mm_to_meters(x_mm), mm_to_meters(y_mm), mm_to_meters(z_mm), append=True, mark=mark)
+            xm, ym, zm = mm_to_meters(x_mm), mm_to_meters(y_mm), mm_to_meters(z_mm)
+            sel_ok = self._safe_select(ext, "", ent_type, xm, ym, zm, append=True, mark=mark)
+            if not sel_ok:
+                sel_ok = select_brep_entity_by_point(assy_doc, ent_type, xm, ym, zm, append=True, mark=mark)
+            return sel_ok
 
         # Named entity (e.g. plane, axis, or feature)
         ent_name = raw

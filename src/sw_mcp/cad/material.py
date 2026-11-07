@@ -145,9 +145,16 @@ class MaterialManager:
         """
         doc = self.get_active_part()
 
-        if not config_name:
+        active_config_name = "Default"
+        try:
             config = doc.ConfigurationManager.ActiveConfiguration
-            config_name = config.Name if config else "Default"
+            if config and getattr(config, "Name", None):
+                active_config_name = str(config.Name)
+        except Exception:
+            pass
+
+        if not config_name:
+            config_name = active_config_name
 
         database_name = ""
         material_name = ""
@@ -177,17 +184,36 @@ class MaterialManager:
             except Exception as e:
                 logger.debug("MaterialIdName fallback failed: %s", e)
 
-        # Query density if solid body exists
-        density_kg_m3 = 0.0
-        try:
-            mp = doc.Extension.CreateMassProperty
-            if mp:
-                density_kg_m3 = round(float(mp.Density), 3)
-        except Exception:
-            pass
-
         # Look up mechanical properties from catalog
         props = self.get_material_properties(material_name) if material_name else None
+
+        # Query density corresponding to the requested configuration
+        density_kg_m3 = 0.0
+        is_active_config = config_name.strip().lower() == active_config_name.strip().lower()
+        if is_active_config:
+            try:
+                mp = doc.Extension.CreateMassProperty
+                if mp:
+                    density_kg_m3 = round(float(mp.Density), 3)
+            except Exception:
+                pass
+            if density_kg_m3 == 0.0 and props and isinstance(props.get("Mass Density"), (int, float)):
+                density_kg_m3 = round(float(props["Mass Density"]), 3)
+        else:
+            if props and isinstance(props.get("Mass Density"), (int, float)):
+                density_kg_m3 = round(float(props["Mass Density"]), 3)
+            else:
+                try:
+                    show_cfg = getattr(doc, "ShowConfiguration2", None)
+                    if callable(show_cfg) and show_cfg(config_name):
+                        try:
+                            mp = doc.Extension.CreateMassProperty
+                            if mp:
+                                density_kg_m3 = round(float(mp.Density), 3)
+                        finally:
+                            show_cfg(active_config_name)
+                except Exception:
+                    pass
 
         return {
             "assigned": bool(material_name),

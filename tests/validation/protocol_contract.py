@@ -63,6 +63,7 @@ ROUTES = {
     "sw_draw_arc": ("sketcher", "draw_arc", "pos", ("x1_mm", "y1_mm", "x2_mm", "y2_mm", "x3_mm", "y3_mm")),
     "sw_create_3d_sketch": ("sketcher", "create_3d_sketch", "pos", ()),
     "sw_draw_3d_line": ("sketcher", "draw_3d_line", "pos", ("x1_mm", "y1_mm", "z1_mm", "x2_mm", "y2_mm", "z2_mm")),
+    "sw_add_sketch_constraint": ("sketcher", "add_sketch_constraint", "kw", ("constraint_type", "x1_mm", "y1_mm", "x2_mm", "y2_mm")),
     "sw_boss_extrude": ("features", "boss_extrude", "pos", ("depth_mm", "flip_dir")),
     "sw_cut_extrude": ("features", "cut_extrude", "pos", ("depth_mm", "flip_dir")),
     "sw_revolve_boss": ("features", "revolve_boss", "pos", ("angle_deg", "reverse_dir")),
@@ -75,6 +76,10 @@ ROUTES = {
     "sw_cut_sweep": ("features", "cut_sweep", "kw", ()),
     "sw_create_reference_plane": ("features", "create_reference_plane", "kw", ("plane_name", "first_reference", "constraint_type", "distance_mm", "angle_deg", "second_reference", "flip")),
     "sw_mirror_feature": ("features", "mirror_feature", "kw", ("plane_name", "feature_name", "mirror_body", "geometry_pattern")),
+    "sw_linear_pattern": ("features", "linear_pattern", "kw", ("feature_name", "spacing1_mm", "instances1", "dir1_entity", "spacing2_mm", "instances2", "dir2_entity", "flip_dir1", "flip_dir2")),
+    "sw_shell": ("features", "shell", "kw", ("thickness_mm", "face_x_mm", "face_y_mm", "face_z_mm", "shell_outward")),
+    "sw_hole_wizard": ("features", "hole_wizard", "kw", ("hole_type", "standard", "fastener_size", "diameter_mm", "depth_mm", "x_mm", "y_mm", "z_mm", "through_all", "counterbore_diameter_mm", "counterbore_depth_mm", "countersink_angle_deg")),
+    "sw_loft_boss": ("features", "loft_boss", "kw", ("profile1_sketch", "profile2_sketch", "guide_curve_sketch", "closed_loft", "thin_feature", "thin_thickness_mm")),
     "sw_get_equations": ("equations", "get_equations", "pos", ()),
     "sw_set_global_variable": ("equations", "set_global_variable", "pos", ("name", "value", "unit")),
     "sw_modify_dimension": ("equations", "modify_dimension", "pos", ("dimension_name", "value_mm")),
@@ -97,6 +102,7 @@ ROUTES = {
     "sw_add_drawing_note": ("drawing", "add_drawing_note", "kw", ("text", "x_mm", "y_mm")),
     "sw_export_drawing": ("drawing", "export_drawing", "kw", ("output_path", "format_type")),
     "sw_create_section_view": ("drawing", "create_section_view", "kw", ("parent_view_name", "cut_start_x_mm", "cut_start_y_mm", "cut_end_x_mm", "cut_end_y_mm", "placement_x_mm", "placement_y_mm", "section_label", "reverse_direction")),
+    "sw_insert_bom_table": ("drawing", "insert_bom_table", "kw", ("view_name", "x_mm", "y_mm", "bom_type", "configuration", "table_template")),
 }
 DOMAIN_CLASSES = {
     "client": ("client", "SolidWorksClient"),
@@ -724,10 +730,10 @@ def schema_test(ctx: Context, name: str) -> dict:
 def registration_cases(ctx: Context) -> list:
     def counts() -> dict:
         names = [tool["name"] for tool in ctx.imported_tools]
-        require(len(names) == 52, f"Expected 52 tools, got {len(names)}")
+        require(len(names) == 58, f"Expected 58 tools, got {len(names)}")
         require(len(set(names)) == len(names), "Duplicate registered tool names")
         require(set(names) == set(ctx.contracts) == set(ROUTES), "Registration/AST/independent route catalog mismatch")
-        require(len(ctx.server.mcp._tool_manager.list_tools()) == 52, "Internal registry count mismatch")
+        require(len(ctx.server.mcp._tool_manager.list_tools()) == 58, "Internal registry count mismatch")
         return {"real_import_count": len(names), "unique_names": len(set(names)), "independent_routes": len(ROUTES)}
     cases = [ContractCase("real_registration_count_and_unique_names", "real_import", counts)]
     for name in ctx.contracts:
@@ -1011,7 +1017,7 @@ def wire_cases(ctx: Context) -> list:
         tools = frame["result"]["tools"]
         require(not frame["result"].get("nextCursor"), "Unexpected pagination; validation must enumerate all tools")
         names = [tool["name"] for tool in tools]
-        require(len(names) == 52 and len(set(names)) == 52, f"Wire count/uniqueness mismatch: {len(names)}/{len(set(names))}")
+        require(len(names) == 58 and len(set(names)) == 58, f"Wire count/uniqueness mismatch: {len(names)}/{len(set(names))}")
         require(set(names) == set(ctx.schemas), "Real wire/import registration mismatch")
         for tool in tools:
             require(schema_of(tool) == schema_of(ctx.schemas[tool["name"]]), "Wire/import input schema mismatch")
